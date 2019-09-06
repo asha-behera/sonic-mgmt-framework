@@ -23,7 +23,7 @@ func (app *IntfApp) getIntfTypeFromIntf(ifName *string) error {
 		app.intfType = ETHERNET
 	} else if strings.HasPrefix(*ifName, "Vlan") {
 		app.intfType = VLAN
-	} else if strings.HasPrefix(*ifName, "portchannel") {
+	} else if strings.HasPrefix(*ifName, "Portchannel") {
 		app.intfType = LAG
 	} else {
 		return errors.New("Fetching Interface type from Interface name failed!")
@@ -209,6 +209,15 @@ func getVlanIdFromVlanName(vlanName *string) (string, error) {
 	log.Info("Extracted VLAN-Id = ", id[1])
 	return id[1], nil
 }
+/* Extract VLAN-Id from Vlan String */
+func getLagIdFromLagName(lagName *string) (string, error) {
+	if !strings.HasPrefix(*lagName, "Portchannel") {
+		return "", errors.New("Not valid Portchannel name : " + *lagName)
+	}
+	id := strings.SplitAfter(*lagName, "Portchannel")
+	log.Info("Extracted PORTCHANNEL-Id = ", id[1])
+	return id[1], nil
+}
 
 /* Validate whether member port exists in the member ports list */
 func checkMemberPortExistsInList(memberPortsList []string, memberPort *string) bool {
@@ -252,6 +261,7 @@ func (app *IntfApp) doGetAllIpKeys(d *db.DB, dbSpec *db.TableSpec) ([]db.Key, er
 	}
 
 	keys, err = intfTable.GetKeys()
+	//log.Infof("****keys are***********", keys)
 	log.Infof("Found %d INTF table keys", len(keys))
 	return keys, err
 }

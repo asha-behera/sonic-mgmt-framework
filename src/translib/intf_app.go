@@ -80,7 +80,7 @@ type IntfApp struct {
 
 	intfD intfData
 	vlanD vlanData
-	lagD vlanData
+	lagD lagData
 
 	ifTableMap map[string]dbEntry
 }
@@ -193,6 +193,11 @@ func (app *IntfApp) translateUpdate(d *db.DB) ([]db.WatchKeys, error) {
 				}
 			case VLAN:
 				keys, err = app.translateUpdateVlanIntf(d, &ifKey, opUpdate)
+				if err != nil {
+					return keys, err
+				}
+			case LAG:
+				keys, err = app.translateUpdateLagIntf(d, &ifKey, opUpdate)
 				if err != nil {
 					return keys, err
 				}
@@ -322,7 +327,12 @@ func (app *IntfApp) processUpdate(d *db.DB) (SetResponse, error) {
 		if err != nil {
 			return resp, err
 		}
-	}
+	case LAG:
+		err = app.processUpdateLagIntf(d)
+		if err != nil {
+			return resp, err
+		}
+        }
 	return resp, err
 }
 

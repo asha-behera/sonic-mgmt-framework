@@ -131,13 +131,15 @@ func (app *lldpApp) translateSubscribe(dbs [db.MaxDB]*db.DB, path string) (*noti
             return nil, nil, errors.New("ifKey given is empty!")
         }
         log.Info("Interface name = ", ifKey)
-        if pathInfo.HasSuffix("/interface{name}") {
+        if pathInfo.HasSuffix("/interface{}") {
+            log.Info("***Inside***Interface name = ", ifKey)
             notifInfo.table = db.TableSpec{Name: "LLDP_ENTRY_TABLE"}
             notifInfo.key = asKey(ifKey)
             notifInfo.needCache = true
             return &notificationOpts{pType: OnChange}, &notifInfo, nil
         }
     }
+    log.Info("***outside***Interface name ..return nnot supported")
     return nil, nil, notSupported
 }
 
