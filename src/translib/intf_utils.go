@@ -23,7 +23,7 @@ func (app *IntfApp) getIntfTypeFromIntf(ifName *string) error {
 		app.intfType = ETHERNET
 	} else if strings.HasPrefix(*ifName, "Vlan") {
 		app.intfType = VLAN
-	} else if strings.HasPrefix(*ifName, "portchannel") {
+	} else if strings.HasPrefix(*ifName, "Portchannel") {
 		app.intfType = LAG
 	} else {
 		return errors.New("Fetching Interface type from Interface name failed!")
