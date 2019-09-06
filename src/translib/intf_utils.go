@@ -256,41 +256,6 @@ func (app *IntfApp) doGetAllIpKeys(d *db.DB, dbSpec *db.TableSpec) ([]db.Key, er
 	return keys, err
 }
 
-/* Removes Interface name as member of VLAN and update the members-list of VLAN Table */
-func (app *IntfApp) removeMembAndUpdateMembersListForVlanTbl(d *db.DB, vlanName *string, ifName *string) error {
-	var err error
-
-	vlanEntry, err := d.GetEntry(app.vlanD.vlanTs, db.Key{Comp: []string{*vlanName}})
-	if err != nil {
-		return err
-	}
-	memberPortsListStr, ok := vlanEntry.Field["members@"]
-	if ok {
-		memberPortsList := generateMemberPortsSliceFromString(&memberPortsListStr)
-		idx := 0
-		memberFound := false
-
-		for idxVal, memberName := range memberPortsList {
-			if memberName == *ifName {
-				memberFound = true
-				idx = idxVal
-				break
-			}
-		}
-		if memberFound {
-			memberPortsList = append(memberPortsList[:idx], memberPortsList[idx+1:]...)
-			if len(memberPortsList) == 0 {
-				delete(vlanEntry.Field, "members@")
-			} else {
-				memberPortsStr := generateMemberPortsStringFromSlice(memberPortsList)
-				vlanEntry.Field["members@"] = *memberPortsStr
-			}
-			d.SetEntry(app.vlanD.vlanTs, db.Key{Comp: []string{*vlanName}}, vlanEntry)
-		}
-	}
-	return err
-}
-
 /* Removal of untagged-vlan associated with interface, updates VLAN_MEMBER table and returns vlan*/
 func (app *IntfApp) removeUntaggedVlanAndUpdateVlanMembTbl(d *db.DB, ifName *string) (*string, error) {
 	if len(*ifName) == 0 {
@@ -360,7 +325,7 @@ func (app *IntfApp) removeTaggedVlanAndUpdateVlanMembTbl(d *db.DB, trunkVlan *st
 }
 
 /* Validate whether Port has any Untagged VLAN Config existing */
-func (app *IntfApp) validateUntaggedVlanCfgred(d *db.DB, ifName *string) (bool, error) {
+func (app *IntfApp) validateUntaggedVlanCfgredForIf(d *db.DB, ifName *string) (bool, error) {
 	var err error
 
 	var vlanMemberKeys []db.Key
@@ -394,4 +359,101 @@ func (app *IntfApp) validateUntaggedVlanCfgred(d *db.DB, ifName *string) (bool, 
 		}
 	}
 	return false, nil
+}
+
+/* Removes all VLAN_MEMBER table entries for Interface and Get list of VLANs */
+func (app *IntfApp) removeAllVlanMembrsForIfAndGetVlans(d *db.DB, ifName *string, ifMode intfModeType) ([]string, error) {
+	var err error
+	var vlanKeys []db.Key
+	vlanTable, err := d.GetTable(app.vlanD.vlanMemberTs)
+	if err != nil {
+		return nil, err
+	}
+
+	vlanKeys, err = vlanTable.GetKeys()
+	var vlanSlice []string
+
+	for _, vlanKey := range vlanKeys {
+		if len(vlanKeys) < 2 {
+			continue
+		}
+		if vlanKey.Get(1) == *ifName {
+			entry, err := d.GetEntry(app.vlanD.vlanMemberTs, vlanKey)
+			if err != nil {
+				log.Errorf("Error found on fetching Vlan member info from App DB for Interface Name : %s", *ifName)
+				return vlanSlice, err
+			}
+			tagInfo, ok := entry.Field["tagging_mode"]
+			if ok {
+				switch ifMode {
+				case ACCESS:
+					if tagInfo != "tagged" {
+						continue
+					}
+				case TRUNK:
+					if tagInfo != "untagged" {
+						continue
+					}
+				}
+				vlanSlice = append(vlanSlice, vlanKey.Get(0))
+				d.DeleteEntry(app.vlanD.vlanMemberTs, vlanKey)
+			}
+		}
+	}
+	return vlanSlice, err
+}
+
+/* Removes the Interface name from Members list of VLAN table and updates it */
+func (app *IntfApp) removeFromMembersListForVlan(d *db.DB, vlan *string, ifName *string) error {
+
+	vlanEntry, err := d.GetEntry(app.vlanD.vlanTs, db.Key{Comp: []string{*vlan}})
+	if err != nil {
+		log.Errorf("Get Entry for VLAN table with Vlan:%s failed!", *vlan)
+		return err
+	}
+	memberPortsInfo, ok := vlanEntry.Field["members@"]
+	if ok {
+		memberPortsList := generateMemberPortsSliceFromString(&memberPortsInfo)
+		if memberPortsList == nil {
+			return nil
+		}
+		idx := 0
+		memberFound := false
+
+		for idxVal, memberName := range memberPortsList {
+			if memberName == *ifName {
+				memberFound = true
+				idx = idxVal
+				break
+			}
+		}
+		if memberFound {
+			memberPortsList = append(memberPortsList[:idx], memberPortsList[idx+1:]...)
+			if len(memberPortsList) == 0 {
+				log.Info("Deleting the members@")
+				delete(vlanEntry.Field, "members@")
+			} else {
+				memberPortsStr := generateMemberPortsStringFromSlice(memberPortsList)
+				log.Infof("Updated Member ports = %s for VLAN: %s", *memberPortsStr, *vlan)
+				vlanEntry.Field["members@"] = *memberPortsStr
+			}
+			d.SetEntry(app.vlanD.vlanTs, db.Key{Comp: []string{*vlan}}, vlanEntry)
+		} else {
+			return nil
+		}
+	}
+	return nil
+}
+
+/* Removes Interface name from Members-list for all VLANs from VLAN table and updates it */
+func (app *IntfApp) removeFromMembersListForAllVlans(d *db.DB, ifName *string, vlanSlice []string) error {
+	var err error
+
+	for _, vlan := range vlanSlice {
+		err = app.removeFromMembersListForVlan(d, &vlan, ifName)
+		if err != nil {
+			return err
+		}
+	}
+	return err
 }

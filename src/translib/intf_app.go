@@ -76,7 +76,7 @@ type IntfApp struct {
 	countersDB *db.DB
 
 	intfType ifType
-	mode     intfMode
+	mode     intfModeCfgAlone
 
 	intfD intfData
 	vlanD vlanData
