@@ -174,7 +174,8 @@ func (app *IntfApp) translateUpdatePhyIntfEthernet(d *db.DB, ifKey *string, intf
 		for _, vlanId := range trunkVlanSlice {
 			err = app.validateVlanExists(d, &vlanId)
 			if err != nil {
-				errStr := "Invalid VLAN: " + vlanId
+				id := vlanId[len("Vlan"):len(vlanId)]
+				errStr := "Invalid VLAN: " + id
 				err = tlerr.InvalidArgsError{Format: errStr}
 				return err
 			}

@@ -32,9 +32,10 @@ type dbEntry struct {
 }
 
 type vlanData struct {
-	vlanTs       *db.TableSpec
-	vlanMemberTs *db.TableSpec
-	vlanTblTs    *db.TableSpec
+	vlanTs          *db.TableSpec
+	vlanMemberTs    *db.TableSpec
+	vlanTblTs       *db.TableSpec
+	vlanMemberTblTs *db.TableSpec
 
 	vlanMembersTableMap map[string]map[string]dbEntry
 }
@@ -121,6 +122,7 @@ func (app *IntfApp) initializeVlan() {
 	app.vlanD.vlanTs = &db.TableSpec{Name: "VLAN"}
 	app.vlanD.vlanMemberTs = &db.TableSpec{Name: "VLAN_MEMBER"}
 	app.vlanD.vlanTblTs = &db.TableSpec{Name: "VLAN_TABLE"}
+	app.vlanD.vlanMemberTblTs = &db.TableSpec{Name: "VLAN_MEMBER_TABLE"}
 
 	app.vlanD.vlanMembersTableMap = make(map[string]map[string]dbEntry)
 }

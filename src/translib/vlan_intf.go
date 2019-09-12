@@ -72,7 +72,8 @@ func (app *IntfApp) translateDeleteVlanIntf(d *db.DB, vlanName string) ([]db.Wat
 	var keys []db.WatchKeys
 	curr, err := d.GetEntry(app.vlanD.vlanTs, db.Key{Comp: []string{vlanName}})
 	if err != nil {
-		errStr := "Invalid Vlan: " + vlanName
+		vlanId := vlanName[len("Vlan"):len(vlanName)]
+		errStr := "Invalid Vlan: " + vlanId
 		return keys, tlerr.InvalidArgsError{Format: errStr}
 	}
 	app.ifTableMap[vlanName] = dbEntry{entry: curr, op: opDelete}

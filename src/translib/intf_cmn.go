@@ -51,144 +51,6 @@ func (app *IntfApp) translateUpdateIntfConfig(ifKey *string, intf *ocbinds.Openc
 	app.ifTableMap[*ifKey] = dbEntry{op: opUpdate, entry: *curr}
 }
 
-func (app *IntfApp) processGetSpecificIntf(dbs [db.MaxDB]*db.DB, targetUriPath *string) (GetResponse, error) {
-	var err error
-	var payload []byte
-	pathInfo := app.path
-	intfObj := app.getAppRootObject()
-
-	log.Infof("Received GET for path %s; template: %s vars=%v", pathInfo.Path, pathInfo.Template, pathInfo.Vars)
-
-	if intfObj.Interface != nil && len(intfObj.Interface) > 0 {
-		/* Interface name is the key */
-		for ifKey, _ := range intfObj.Interface {
-			log.Info("Interface Name = ", ifKey)
-			ifInfo := intfObj.Interface[ifKey]
-			/* Filling Interface Info to internal DS */
-			err = app.convertDBIntfInfoToInternal(app.appDB, ifKey, db.Key{Comp: []string{ifKey}})
-			if err != nil {
-				return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-			}
-
-			/*Check if the request is for a specific attribute in Interfaces state container*/
-			oc_val := &ocbinds.OpenconfigInterfaces_Interfaces_Interface_State{}
-			ok, e := app.getSpecificAttr(*targetUriPath, ifKey, oc_val)
-			if ok {
-				if e != nil {
-					return GetResponse{Payload: payload, ErrSrc: AppErr}, e
-				}
-
-				payload, err = dumpIetfJson(oc_val, false)
-				if err == nil {
-					return GetResponse{Payload: payload}, err
-				} else {
-					return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-				}
-			}
-
-			/* Filling the counter Info to internal DS */
-			err = app.getPortOidMapForCounters(app.countersDB)
-			if err != nil {
-				return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-			}
-			err = app.convertDBIntfCounterInfoToInternal(app.countersDB, ifKey)
-			if err != nil {
-				return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-			}
-
-			/*Check if the request is for a specific attribute in Interfaces state COUNTERS container*/
-			counter_val := &ocbinds.OpenconfigInterfaces_Interfaces_Interface_State_Counters{}
-			ok, e = app.getSpecificCounterAttr(*targetUriPath, ifKey, counter_val)
-			if ok {
-				if e != nil {
-					return GetResponse{Payload: payload, ErrSrc: AppErr}, e
-				}
-
-				payload, err = dumpIetfJson(counter_val, false)
-				if err == nil {
-					return GetResponse{Payload: payload}, err
-				} else {
-					return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-				}
-			}
-
-			/* Filling Interface IP info to internal DS */
-			err = app.convertDBIntfIPInfoToInternal(app.appDB, ifKey)
-			if err != nil {
-				return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-			}
-
-			/* Filling the tree with the info we have in Internal DS */
-			ygot.BuildEmptyTree(ifInfo)
-			if *app.ygotTarget == ifInfo.State {
-				ygot.BuildEmptyTree(ifInfo.State)
-			}
-			app.convertInternalToOCIntfInfo(&ifKey, ifInfo)
-			if *app.ygotTarget == ifInfo {
-				payload, err = dumpIetfJson(intfObj, false)
-			} else {
-				dummyifInfo := &ocbinds.OpenconfigInterfaces_Interfaces_Interface{}
-				if *app.ygotTarget == ifInfo.Config {
-					dummyifInfo.Config = ifInfo.Config
-					payload, err = dumpIetfJson(dummyifInfo, false)
-				} else if *app.ygotTarget == ifInfo.State {
-					dummyifInfo.State = ifInfo.State
-					payload, err = dumpIetfJson(dummyifInfo, false)
-				} else {
-					log.Info("Not supported get type!")
-					err = errors.New("Requested get-type not supported!")
-				}
-			}
-		}
-	}
-	return GetResponse{Payload: payload}, err
-}
-
-func (app *IntfApp) processGetAllInterfaces(dbs [db.MaxDB]*db.DB) (GetResponse, error) {
-	var err error
-	var payload []byte
-	intfObj := app.getAppRootObject()
-
-	log.Info("Get all Interfaces request!")
-
-	/* Filling Interface Info to internal DS */
-	err = app.convertDBIntfInfoToInternal(app.appDB, "", db.Key{})
-	if err != nil {
-		return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-	}
-	/* Filling Interface IP info to internal DS */
-	err = app.convertDBIntfIPInfoToInternal(app.appDB, "")
-	if err != nil {
-		return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-	}
-	/* Filling the counter Info to internal DS */
-	err = app.getPortOidMapForCounters(app.countersDB)
-	if err != nil {
-		return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-	}
-	err = app.convertDBIntfCounterInfoToInternal(app.countersDB, "")
-	if err != nil {
-		return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-	}
-	ygot.BuildEmptyTree(intfObj)
-	for ifKey, _ := range app.ifTableMap {
-		log.Info("If Key = ", ifKey)
-		ifInfo, err := intfObj.NewInterface(ifKey)
-		if err != nil {
-			log.Errorf("Creation of interface subtree for %s failed!", ifKey)
-			return GetResponse{Payload: payload, ErrSrc: AppErr}, err
-		}
-		ygot.BuildEmptyTree(ifInfo)
-		app.convertInternalToOCIntfInfo(&ifKey, ifInfo)
-	}
-	if *app.ygotTarget == intfObj {
-		payload, err = dumpIetfJson((*app.ygotRoot).(*ocbinds.Device), true)
-	} else {
-		log.Error("Wrong request!")
-	}
-	return GetResponse{Payload: payload}, err
-}
-
 func (app *IntfApp) getSpecificAttr(targetUriPath string, ifKey string, oc_val *ocbinds.OpenconfigInterfaces_Interfaces_Interface_State) (bool, error) {
 	switch targetUriPath {
 	case "/openconfig-interfaces:interfaces/interface/state/oper-status":
@@ -383,7 +245,45 @@ func (app *IntfApp) getIntfAttr(ifName string, attr string, table Table) (string
 	return "", errors.New("Attr " + attr + "doesn't exist in IF table Map!")
 }
 
-/***********  Translation Helper fn to convert DB Interface info to Internal DS   ***********/
+func (app *IntfApp) processGetSpecificAttr(targetUriPath *string, ifKey *string) (bool, *GetResponse, error) {
+	var err error
+	var payload []byte
+
+	/*Check if the request is for a specific attribute in Interfaces state container*/
+	oc_val := &ocbinds.OpenconfigInterfaces_Interfaces_Interface_State{}
+	ok, e := app.getSpecificAttr(*targetUriPath, *ifKey, oc_val)
+	if ok {
+		if e != nil {
+			return ok, &(GetResponse{Payload: payload, ErrSrc: AppErr}), e
+		}
+		payload, err = dumpIetfJson(oc_val, false)
+		if err != nil {
+			return ok, &(GetResponse{Payload: payload, ErrSrc: AppErr}), err
+		}
+	}
+	return ok, &(GetResponse{Payload: payload}), err
+}
+
+func (app *IntfApp) processGetSpecificCounterAttr(targetUriPath *string, ifKey *string) (bool, *GetResponse, error) {
+	var err error
+	var payload []byte
+
+	/*Check if the request is for a specific attribute in Interfaces state COUNTERS container*/
+	counter_val := &ocbinds.OpenconfigInterfaces_Interfaces_Interface_State_Counters{}
+	ok, e := app.getSpecificCounterAttr(*targetUriPath, *ifKey, counter_val)
+	if ok {
+		if e != nil {
+			return ok, &(GetResponse{Payload: payload, ErrSrc: AppErr}), e
+		}
+
+		payload, err = dumpIetfJson(counter_val, false)
+		if err != nil {
+			return ok, &(GetResponse{Payload: payload, ErrSrc: AppErr}), err
+		}
+	}
+	return ok, &(GetResponse{Payload: payload}), err
+}
+
 func (app *IntfApp) getPortOidMapForCounters(dbCl *db.DB) error {
 	var err error
 	ifCountInfo, err := dbCl.GetMapAll(app.intfD.portOidCountrTblTs)
@@ -399,12 +299,12 @@ func (app *IntfApp) getPortOidMapForCounters(dbCl *db.DB) error {
 	return err
 }
 
-func (app *IntfApp) convertDBIntfCounterInfoToInternal(dbCl *db.DB, ifKey string) error {
+func (app *IntfApp) convertDBIntfCounterInfoToInternal(dbCl *db.DB, ifName *string) error {
 	var err error
 
-	if len(ifKey) > 0 {
-		oid := app.intfD.portOidMap.entry.Field[ifKey]
-		log.Infof("OID : %s received for Interface : %s", oid, ifKey)
+	if len(*ifName) > 0 {
+		oid := app.intfD.portOidMap.entry.Field[*ifName]
+		log.Infof("OID : %s received for Interface : %s", oid, *ifName)
 
 		/* Get the statistics for the port */
 		var ifStatKey db.Key
@@ -412,75 +312,109 @@ func (app *IntfApp) convertDBIntfCounterInfoToInternal(dbCl *db.DB, ifKey string
 
 		ifStatInfo, err := dbCl.GetEntry(app.intfD.intfCountrTblTs, ifStatKey)
 		if err != nil {
-			log.Infof("Fetching port-stat for port : %s failed!", ifKey)
+			log.Infof("Fetching port-stat for port : %s failed!", *ifName)
 			return err
 		}
-		app.intfD.portStatMap[ifKey] = dbEntry{entry: ifStatInfo}
+		app.intfD.portStatMap[*ifName] = dbEntry{entry: ifStatInfo}
 	} else {
-		for ifKey, _ := range app.ifTableMap {
-			app.convertDBIntfCounterInfoToInternal(dbCl, ifKey)
+		for ifName, _ := range app.ifTableMap {
+			app.convertDBIntfCounterInfoToInternal(dbCl, &ifName)
 		}
 	}
 	return err
 }
 
-func (app *IntfApp) convertDBIntfInfoToInternal(dbCl *db.DB, ifName string, ifKey db.Key) error {
-
+func (app *IntfApp) convertDBIfVlanListInfoToInternal(dbCl *db.DB, ts *db.TableSpec, ifName *string) error {
 	var err error
-	/* Fetching DB data for a specific Interface */
-	if len(ifName) > 0 {
 
-		var ts *db.TableSpec
-		switch app.intfType {
-		case ETHERNET:
-			ts = app.intfD.portTblTs
-		case VLAN:
-			ts = app.vlanD.vlanTblTs
+	vlanMemberTable, err := dbCl.GetTable(ts)
+	if err != nil {
+		return err
+	}
+	vlanMemberKeys, err := vlanMemberTable.GetKeys()
+	if err != nil {
+		return err
+	}
+	log.Infof("Found %d vlan-member-table keys", len(vlanMemberKeys))
+
+	for _, vlanMember := range vlanMemberKeys {
+		if len(vlanMember.Comp) < 2 {
+			continue
+		}
+		vlanId := vlanMember.Get(0)
+		ifName := vlanMember.Get(1)
+		log.Infof("Received Vlan: %s for Interface: %s", vlanId, ifName)
+
+		memberPortEntry, err := dbCl.GetEntry(ts, vlanMember)
+		if err != nil {
+			return err
+		}
+		if !memberPortEntry.IsPopulated() {
+			errStr := "Tagging Info not present for Vlan: " + vlanId + " Interface: " + ifName + " from VLAN_MEMBER_TABLE"
+			return errors.New(errStr)
 		}
 
-		log.Info("Updating Interface info from APP-DB to Internal DS for Interface name : ", ifName)
+		/* vlanMembersTableMap is used as DS for ifName to list of VLANs */
+		if app.vlanD.vlanMembersTableMap[ifName] == nil {
+			app.vlanD.vlanMembersTableMap[ifName] = make(map[string]dbEntry)
+			app.vlanD.vlanMembersTableMap[ifName][vlanId] = dbEntry{entry: memberPortEntry}
+		} else {
+			app.vlanD.vlanMembersTableMap[ifName][vlanId] = dbEntry{entry: memberPortEntry}
+		}
+	}
+	log.Infof("Updated the vlan-member-table ds for Interface: %s", *ifName)
+	return err
+}
+
+func (app *IntfApp) convertDBIntfInfoToInternal(dbCl *db.DB, ts *db.TableSpec, ifName *string, ifKey db.Key) error {
+
+	var err error
+
+	/* Fetching DB data for a specific Interface */
+	if len(*ifName) > 0 {
+		log.Info("Updating Interface info from APP-DB to Internal DS for Interface name : ", *ifName)
 		ifInfo, err := dbCl.GetEntry(ts, ifKey)
 		if err != nil {
-			log.Errorf("Error found on fetching Interface info from App DB for If Name : %s", ifName)
-			errStr := "Invalid Interface:" + ifName
+			log.Errorf("Error found on fetching Interface info from App DB for If Name : %s", *ifName)
+			errStr := "Invalid Interface:" + *ifName
 			err = tlerr.InvalidArgsError{Format: errStr}
 			return err
 		}
 		if ifInfo.IsPopulated() {
-			log.Info("Interface Info populated for ifName : ", ifName)
-			app.ifTableMap[ifName] = dbEntry{entry: ifInfo}
+			log.Info("Interface Info populated for ifName : ", *ifName)
+			app.ifTableMap[*ifName] = dbEntry{entry: ifInfo}
 		} else {
-			return errors.New("Populating Interface info for " + ifName + "failed")
+			return errors.New("Populating Interface info for " + *ifName + "failed")
 		}
 	} else {
 		log.Info("App-DB get for all the interfaces")
-		tbl, err := dbCl.GetTable(app.intfD.portTblTs)
+		tbl, err := dbCl.GetTable(ts)
 		if err != nil {
 			log.Error("App-DB get for list of interfaces failed!")
 			return err
 		}
 		keys, _ := tbl.GetKeys()
 		for _, key := range keys {
-			app.convertDBIntfInfoToInternal(dbCl, key.Get(0), db.Key{Comp: []string{key.Get(0)}})
+			ifName := key.Get(0)
+			app.convertDBIntfInfoToInternal(dbCl, ts, &(ifName), db.Key{Comp: []string{key.Get(0)}})
 		}
 	}
 	return err
 }
 
-/***********  Translation Helper fn to convert DB Interface IP info to Internal DS   ***********/
-func (app *IntfApp) convertDBIntfIPInfoToInternal(dbCl *db.DB, ifName string) error {
+func (app *IntfApp) convertDBIntfIPInfoToInternal(dbCl *db.DB, ts *db.TableSpec, ifName *string) error {
 
 	var err error
-	log.Info("Updating Interface IP Info from APP-DB to Internal DS for Interface Name : ", ifName)
-	app.allIpKeys, _ = app.doGetAllIpKeys(dbCl, app.intfD.intfIPTblTs)
+	log.Info("Updating Interface IP Info from APP-DB to Internal DS for Interface Name : ", *ifName)
+	app.allIpKeys, _ = app.doGetAllIpKeys(dbCl, ts)
 
 	for _, key := range app.allIpKeys {
 		if len(key.Comp) <= 1 {
 			continue
 		}
-		ipInfo, err := dbCl.GetEntry(app.intfD.intfIPTblTs, key)
+		ipInfo, err := dbCl.GetEntry(ts, key)
 		if err != nil {
-			log.Errorf("Error found on fetching Interface IP info from App DB for Interface Name : %s", ifName)
+			log.Errorf("Error found on fetching Interface IP info from App DB for Interface Name : %s", *ifName)
 			return err
 		}
 		if len(app.intfD.ifIPTableMap[key.Get(0)]) == 0 {
@@ -493,10 +427,58 @@ func (app *IntfApp) convertDBIntfIPInfoToInternal(dbCl *db.DB, ifName string) er
 	return err
 }
 
-func (app *IntfApp) convertInternalToOCIntfInfo(ifName *string, ifInfo *ocbinds.OpenconfigInterfaces_Interfaces_Interface) {
-	app.convertInternalToOCIntfAttrInfo(ifName, ifInfo)
-	app.convertInternalToOCIntfIPAttrInfo(ifName, ifInfo)
-	app.convertInternalToOCPortStatInfo(ifName, ifInfo)
+func (app *IntfApp) processGetConvertDBPhyIfInfoToDS(ifName *string) error {
+	var err error
+
+	err = app.convertDBIntfInfoToInternal(app.appDB, app.intfD.portTblTs, ifName, db.Key{Comp: []string{*ifName}})
+	if err != nil {
+		return err
+	}
+
+	err = app.convertDBIfVlanListInfoToInternal(app.appDB, app.vlanD.vlanMemberTblTs, ifName)
+	if err != nil {
+		return err
+	}
+
+	err = app.getPortOidMapForCounters(app.countersDB)
+	if err != nil {
+		return err
+	}
+	err = app.convertDBIntfCounterInfoToInternal(app.countersDB, ifName)
+	if err != nil {
+		return err
+	}
+
+	err = app.convertDBIntfIPInfoToInternal(app.appDB, app.intfD.intfIPTblTs, ifName)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+func (app *IntfApp) processGetConvertDBVlanIfInfoToDS(vlanName *string) error {
+	var err error
+
+	err = app.convertDBIntfInfoToInternal(app.appDB, app.vlanD.vlanTblTs, vlanName, db.Key{Comp: []string{*vlanName}})
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+func (app *IntfApp) processGetConvertDBIfInfoToDS(ifName *string) error {
+	var err error
+
+	err = app.processGetConvertDBPhyIfInfoToDS(ifName)
+	if err != nil {
+		return err
+	}
+
+	err = app.processGetConvertDBVlanIfInfoToDS(ifName)
+	if err != nil {
+		return err
+	}
+	return err
 }
 
 func (app *IntfApp) convertInternalToOCIntfAttrInfo(ifName *string, ifInfo *ocbinds.OpenconfigInterfaces_Interfaces_Interface) {
@@ -576,7 +558,45 @@ func (app *IntfApp) convertInternalToOCIntfAttrInfo(ifName *string, ifInfo *ocbi
 			}
 		}
 	}
+}
 
+func (app *IntfApp) convertInternalToOCIntfVlanListInfo(ifName *string, ifInfo *ocbinds.OpenconfigInterfaces_Interfaces_Interface) error {
+	var err error
+	taggedMemberPresent := false
+
+	if len(*ifName) < 0 {
+		return nil
+	}
+	vlanMap, ok := app.vlanD.vlanMembersTableMap[*ifName]
+	if ok {
+		for vlanName, tagEntry := range vlanMap {
+			vlanIdStr := vlanName[len("Vlan"):len(vlanName)]
+			vlanId, err := strconv.Atoi(vlanIdStr)
+			vlanIdCast := uint16(vlanId)
+
+			tagMode := tagEntry.entry.Field["tagging_mode"]
+			if tagMode == "untagged" {
+				if err != nil {
+					errStr := "Translation of Vlan-name: " + vlanName + " to vlan-id failed!"
+					return errors.New(errStr)
+				}
+				ifInfo.Ethernet.SwitchedVlan.State.AccessVlan = &(vlanIdCast)
+				log.Infof("Adding access-vlan: %d succesful!", vlanIdCast)
+			} else {
+				taggedMemberPresent = true
+				trunkVlan, _ := ifInfo.Ethernet.SwitchedVlan.State.To_OpenconfigInterfaces_Interfaces_Interface_Ethernet_SwitchedVlan_State_TrunkVlans_Union(vlanIdCast)
+				ifInfo.Ethernet.SwitchedVlan.State.TrunkVlans = append(ifInfo.Ethernet.SwitchedVlan.State.TrunkVlans, trunkVlan)
+				log.Infof("Adding trunk-vlan: %d succesful!", trunkVlan)
+			}
+
+		}
+		if taggedMemberPresent {
+			ifInfo.Ethernet.SwitchedVlan.State.InterfaceMode = ocbinds.OpenconfigVlan_VlanModeType_TRUNK
+		} else {
+			ifInfo.Ethernet.SwitchedVlan.State.InterfaceMode = ocbinds.OpenconfigVlan_VlanModeType_ACCESS
+		}
+	}
+	return err
 }
 
 func (app *IntfApp) convertInternalToOCIntfIPAttrInfo(ifName *string, ifInfo *ocbinds.OpenconfigInterfaces_Interfaces_Interface) {
@@ -654,6 +674,7 @@ func (app *IntfApp) convertInternalToOCPortStatInfo(ifName *string, ifInfo *ocbi
 		return
 	}
 	if portStatInfo, ok := app.intfD.portStatMap[*ifName]; ok {
+		log.Info("Entered Counters filling")
 
 		inOctet := new(uint64)
 		inOctetVal, _ := strconv.Atoi(portStatInfo.entry.Field["SAI_PORT_STAT_IF_IN_OCTETS"])
@@ -731,4 +752,120 @@ func (app *IntfApp) convertInternalToOCPortStatInfo(ifName *string, ifInfo *ocbi
 		*outDiscPkt = uint64(outDiscPktVal)
 		ifInfo.State.Counters.OutDiscards = outDiscPkt
 	}
+}
+
+func (app *IntfApp) convertInternalToOCIntfInfo(ifName *string, ifInfo *ocbinds.OpenconfigInterfaces_Interfaces_Interface) {
+	log.Info("Interface name for filling = ", *ifName)
+	app.convertInternalToOCIntfAttrInfo(ifName, ifInfo)
+	app.convertInternalToOCIntfVlanListInfo(ifName, ifInfo)
+	app.convertInternalToOCIntfIPAttrInfo(ifName, ifInfo)
+	app.convertInternalToOCPortStatInfo(ifName, ifInfo)
+}
+
+/* Build tree for sending the response back to North bound */
+func (app *IntfApp) processBuildTree(ifInfo *ocbinds.OpenconfigInterfaces_Interfaces_Interface, ifKey *string) {
+	ygot.BuildEmptyTree(ifInfo)
+	if *app.ygotTarget == ifInfo.State {
+		ygot.BuildEmptyTree(ifInfo.State)
+	}
+	app.convertInternalToOCIntfInfo(ifKey, ifInfo)
+}
+
+func (app *IntfApp) processGetSpecificIntf(dbs [db.MaxDB]*db.DB, targetUriPath *string) (GetResponse, error) {
+	var err error
+	var payload []byte
+	var ok bool
+	var resp *GetResponse
+
+	pathInfo := app.path
+	intfObj := app.getAppRootObject()
+
+	log.Infof("Received GET for path %s; template: %s vars=%v", pathInfo.Path, pathInfo.Template, pathInfo.Vars)
+
+	if intfObj.Interface != nil && len(intfObj.Interface) > 0 {
+		/* Interface name is the key */
+		for ifKey, _ := range intfObj.Interface {
+			log.Info("Interface Name = ", ifKey)
+			err = app.getIntfTypeFromIntf(&ifKey)
+			if err != nil {
+				return GetResponse{Payload: payload, ErrSrc: AppErr}, err
+			}
+			switch app.intfType {
+			case ETHERNET:
+				err = app.processGetConvertDBPhyIfInfoToDS(&ifKey)
+				if err != nil {
+					return GetResponse{Payload: payload, ErrSrc: AppErr}, err
+				}
+
+				ok, resp, err = app.processGetSpecificAttr(targetUriPath, &ifKey)
+				if ok {
+					return *resp, err
+				}
+
+				ok, resp, err = app.processGetSpecificCounterAttr(targetUriPath, &ifKey)
+				if ok {
+					return *resp, err
+				}
+			case VLAN:
+				err = app.processGetConvertDBVlanIfInfoToDS(&ifKey)
+				if err != nil {
+					return GetResponse{Payload: payload, ErrSrc: AppErr}, err
+				}
+			}
+
+			ifInfo := intfObj.Interface[ifKey]
+			app.processBuildTree(ifInfo, &ifKey)
+
+			if *app.ygotTarget == ifInfo {
+				payload, err = dumpIetfJson(intfObj, false)
+			} else {
+				dummyifInfo := &ocbinds.OpenconfigInterfaces_Interfaces_Interface{}
+				if *app.ygotTarget == ifInfo.Config {
+					dummyifInfo.Config = ifInfo.Config
+					payload, err = dumpIetfJson(dummyifInfo, false)
+				} else if *app.ygotTarget == ifInfo.State {
+					dummyifInfo.State = ifInfo.State
+					payload, err = dumpIetfJson(dummyifInfo, false)
+				} else {
+					log.Info("Not supported get type!")
+					err = errors.New("Requested get-type not supported!")
+				}
+			}
+			resp = &(GetResponse{Payload: payload})
+		}
+	}
+	return *resp, err
+}
+
+func (app *IntfApp) processGetAllInterfaces(dbs [db.MaxDB]*db.DB) (GetResponse, error) {
+	var err error
+	var payload []byte
+	var resp *GetResponse
+
+	ifName := ""
+	intfObj := app.getAppRootObject()
+
+	log.Info("Get all Interfaces request!")
+
+	err = app.processGetConvertDBIfInfoToDS(&ifName)
+	if err != nil {
+		return GetResponse{Payload: payload, ErrSrc: AppErr}, err
+	}
+
+	ygot.BuildEmptyTree(intfObj)
+	for ifName, _ := range app.ifTableMap {
+		ifInfo, err := intfObj.NewInterface(ifName)
+		if err != nil {
+			log.Errorf("Creation of interface subtree for %s failed!", ifName)
+			return GetResponse{Payload: payload, ErrSrc: AppErr}, err
+		}
+		app.processBuildTree(ifInfo, &ifName)
+	}
+	if *app.ygotTarget == intfObj {
+		payload, err = dumpIetfJson((*app.ygotRoot).(*ocbinds.Device), true)
+		resp = &(GetResponse{Payload: payload})
+	} else {
+		log.Error("Wrong Request!")
+	}
+	return *resp, err
 }
