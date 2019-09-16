@@ -3,6 +3,7 @@ import sys
 import time
 import json
 import ast
+import yaml
 import openconfig_interfaces_client
 from openconfig_interfaces_client.rest import ApiException
 from scripts.render_cli import show_cli_output
@@ -25,10 +26,11 @@ def call_method(name, args):
 
 def generate_body(func, args):
     body = None
-    # Get the rules of all ACL table entries.
+    print("args[0] is ", args[0])
     if func.__name__ == 'patch_openconfig_interfaces_interfaces_interface':
        keypath = [ args[0] ]
        body = {}
+
     elif func.__name__ == 'delete_openconfig_interfaces_interfaces_interface':
        keypath = [ args[0] ]
     elif func.__name__ == 'patch_openconfig_interfaces_interfaces_interface_config_description':
@@ -83,14 +85,45 @@ def getId(item):
     return ifName
 
 def run(func, args):
-
+    print("args is---------", args)
     c = openconfig_interfaces_client.Configuration()
     c.verify_ssl = False
     aa = openconfig_interfaces_client.OpenconfigInterfacesApi(api_client=openconfig_interfaces_client.ApiClient(configuration=c))
+        
+    if "Portchannel" in args[0] and func.__name__ == 'patch_openconfig_interfaces_interfaces_interface':
+        #print("check if not exist, then add body to json file") # read file check names
+       #('args are', ['Portchannel11'])
+        body = {
+                    "name": args[0],
+                    "min-links": 1,
+                    "members": []
+                }
+        #append body to list 
+        with open('dummy_data.json', 'r') as f:
+            data= yaml.safe_load(f)    
+        data['openconfig-interfaces:interface'].append(body)
+        with open('dummy_data.json', 'w') as f:
+            json.dump(data, f, sort_keys=True, indent=4)
+        print ("Success")
+        return    
 
+    if "Portchannel" in args[0] and func.__name__ == 'get_openconfig_if_aggregate_interfaces_interface_aggregation_state':
+        with open('dummy_data.json', 'r') as f:
+            data= yaml.safe_load(f)
+        show_cli_output("portchannel_show.j2", data)
+        return    
+
+    if func.__name__ == 'patch_openconfig_if_aggregate_interfaces_interface_ethernet_config_aggregate_id': #add members
+        print ("Success --inside aggregate id fun")
+        return   
+ 
+    if func.__name__ == 'patch_openconfig_if_aggregate_interfaces_interface_aggregation_config_min_links': #change min-links value
+        print ("Success")
+        return  
+ 
     # create a body block
     keypath, body = generate_body(func, args)
-
+        
     try:
         if body is not None:
            api_response = getattr(aa,func.__name__)(*keypath, body=body)
@@ -143,5 +176,5 @@ def run(func, args):
 if __name__ == '__main__':
 
     func = eval(sys.argv[1], globals(), openconfig_interfaces_client.OpenconfigInterfacesApi.__dict__)
-
+    print("argv is ----", sys.argv[0:])
     run(func, sys.argv[2:])

@@ -1,0 +1,8 @@
+{% set just_var = 2 %}
+
+{{'-----------------------------------------------------------'}}
+{{'%-20s'|format("Name")}}{{'%-20s'|format("min-links")}}{{'%-15s'|format("port-members")}} 
+{{'-----------------------------------------------------------'}}
+{% for dict in json_output['openconfig-interfaces:interface'] %} 
+{{'%-20s'|format(dict['name']|string)}}{{'%-20s'|format(dict['min-links'])}}{{'%-15s'|format(dict['members']|string)}}
+{% endfor %}
