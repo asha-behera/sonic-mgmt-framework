@@ -43,7 +43,7 @@
 		  	name="port-channel"
 		  	help="Port-channel Interface"
 		  	ptype="SUBCOMMAND"
-			mode="switch"
+			mode="subcommand"
 		  	>
 		  	<PARAM
 		      name="lag-id"
@@ -67,7 +67,11 @@
 	    elif test "${if-subcommands}" = "counters"; then&#xA;
 	        python $SONIC_CLI_ROOT/sonic-cli-if.py get_openconfig_interfaces_interfaces show_interface_counters.j2&#xA;
 	    elif test "${if-subcommands}" = "port-channel"; then&#xA;
-	        python $SONIC_CLI_ROOT/sonic-cli-if.py get_openconfig_if_aggregate_interfaces_interface_aggregation_state Portchannel${lag-id} portchannel_show.j2&#xA;
+                if test "${lag-id}" ==""; then&#xA;
+                    python $SONIC_CLI_ROOT/sonic-cli-if.py get_openconfig_interfaces_interfaces Portchannel show_portchannel.j2&#xA;
+                else&#xA;
+	            python $SONIC_CLI_ROOT/sonic-cli-if.py get_openconfig_if_aggregate_interfaces_interface_aggregation_state Portchannel${lag-id} show_portchannel_id.j2#xA;
+                fi
 	    else&#xA;
                 if test "${phy-if-id}" = ""; then&#xA;
                     python $SONIC_CLI_ROOT/sonic-cli-if.py get_openconfig_interfaces_interfaces show_interface.j2&#xA;
@@ -440,7 +444,7 @@
                 name="min-links"
                 help="Configure the minimum number of links in a port-channel"
                 ptype="UINT" />
-	    <ACTION>python $SONIC_CLI_ROOT/sonic-cli-if.py patch_openconfig_if_aggregate_interfaces_interface_aggregation_config_min_links ${iface} ${min-links} </ACTION>
+	    <ACTION>python $SONIC_CLI_ROOT/sonic-cli-if.py patch_openconfig_if_aggregate_interfaces_interface_aggregation_config_min_links ${po_id} ${min-links} </ACTION>
         </COMMAND>
         <COMMAND
             name="no min-links"

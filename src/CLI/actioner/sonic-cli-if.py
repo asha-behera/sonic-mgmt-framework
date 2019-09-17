@@ -85,42 +85,99 @@ def getId(item):
     return ifName
 
 def run(func, args):
-    print("args is---------", args)
     c = openconfig_interfaces_client.Configuration()
     c.verify_ssl = False
     aa = openconfig_interfaces_client.OpenconfigInterfacesApi(api_client=openconfig_interfaces_client.ApiClient(configuration=c))
-        
+
+    #create a port-channel        
     if "Portchannel" in args[0] and func.__name__ == 'patch_openconfig_interfaces_interfaces_interface':
-        #print("check if not exist, then add body to json file") # read file check names
        #('args are', ['Portchannel11'])
+        with open('port_channel_dummy_data.json', 'r') as f:
+            data= yaml.safe_load(f)    
+        for dict in data['openconfig-interfaces:interface']:
+            if dict["name"] == args[0]:
+                return
         body = {
                     "name": args[0],
                     "min-links": 1,
                     "members": []
                 }
         #append body to list 
-        with open('dummy_data.json', 'r') as f:
-            data= yaml.safe_load(f)    
         data['openconfig-interfaces:interface'].append(body)
-        with open('dummy_data.json', 'w') as f:
+        with open('port_channel_dummy_data.json', 'w') as f:
             json.dump(data, f, sort_keys=True, indent=4)
         print ("Success")
-        return    
+        return
 
+    #show given port-channel details
     if "Portchannel" in args[0] and func.__name__ == 'get_openconfig_if_aggregate_interfaces_interface_aggregation_state':
-        with open('dummy_data.json', 'r') as f:
+        with open('port_channel_dummy_data.json', 'r') as f:
             data= yaml.safe_load(f)
-        show_cli_output("portchannel_show.j2", data)
-        return    
+        for dict in data['openconfig-interfaces:interface']:
+            if dict["name"] == args[0]:
+                show_cli_output("show_portchannel_id.j2", dict)
+                return
+        print("%Error: Entry not found")
+        return
 
-    if func.__name__ == 'patch_openconfig_if_aggregate_interfaces_interface_ethernet_config_aggregate_id': #add members
-        print ("Success --inside aggregate id fun")
+    #show port-channels summary
+    if "Portchannel" in args[0] and func.__name__ == 'get_openconfig_interfaces_interfaces':
+        with open('port_channel_dummy_data.json', 'r') as f:
+            data= yaml.safe_load(f)
+        show_cli_output("show_portchannel.j2", data)
+        return
+
+    #add members to port-channel
+    if func.__name__ == 'patch_openconfig_if_aggregate_interfaces_interface_ethernet_config_aggregate_id': 
+        port_c = 'Portchannel' + args[1]
+        with open('port_channel_dummy_data.json', 'r') as readf:
+            data= yaml.safe_load(readf)    
+        for dict in data['openconfig-interfaces:interface']:
+            if dict["name"] == port_c:
+                dict["members"].append(args[0])
+                with open('port_channel_dummy_data.json', 'w') as writef:
+                    json.dump(data, writef, sort_keys=True, indent=4)
+                print ("Success")
+                return         
+        print ("Failed-entry not found")
         return   
- 
-    if func.__name__ == 'patch_openconfig_if_aggregate_interfaces_interface_aggregation_config_min_links': #change min-links value
-        print ("Success")
-        return  
- 
+
+    #delete_openconfig_if_aggregate_interfaces_interface_ethernet_config_aggregate_id -- remove members from port-channel 
+    
+    #config mtu for port-channel
+    #('args is', ['po0', '9000'])
+    if "po" in args[0] and func.__name__ == 'patch_openconfig_interfaces_interfaces_interface_config_mtu': 
+        return("Success")
+
+    #delete port-channel
+    if "Portchannel" in args[0] and func.__name__ == 'delete_openconfig_interfaces_interfaces_interface': 
+        with open('port_channel_dummy_data.json', 'r') as f:
+            data= yaml.safe_load(f)
+        for dict in data['openconfig-interfaces:interface']:
+            if dict["name"] == args[0]:
+                data['openconfig-interfaces:interface'].remove(dict)
+                with open('port_channel_dummy_data.json', 'w') as writef:
+                    json.dump(data, writef, sort_keys=True, indent=4)
+                print ("Success")
+                return
+        print ("Failed-entry not found")
+        return   
+    
+    #config min-links in port-channel
+    if func.__name__ == 'patch_openconfig_if_aggregate_interfaces_interface_aggregation_config_min_links': 
+        with open('port_channel_dummy_data.json', 'r') as f:
+            data= yaml.safe_load(f)
+        port_c = 'Portchannel'+args[0][2:]
+        for dict in data['openconfig-interfaces:interface']:
+            if dict["name"] == port_c:
+                dict["min-links"]=args[1]
+                with open('port_channel_dummy_data.json', 'w') as f:
+                    json.dump(data, f, sort_keys=True, indent=4)
+                print ("Success")
+                return         
+        print ("Failed-entry not found")
+        return
+
     # create a body block
     keypath, body = generate_body(func, args)
         
