@@ -10,7 +10,7 @@ import (
 /******** CONFIG FUNCTIONS ********/
 
 func (app *IntfApp) translateUpdateLagIntf(d *db.DB, lagName *string, inpOp reqType) ([]db.WatchKeys, error) {
-	log.Info("******INSIDE LAG INTF FILE**translate******")
+	log.Info("----INSIDE LAG INTF FILE-translate----")
 	var err error
 	var keys []db.WatchKeys
 
@@ -18,7 +18,8 @@ func (app *IntfApp) translateUpdateLagIntf(d *db.DB, lagName *string, inpOp reqT
 
 	m := make(map[string]string)
 	entryVal := db.Value{Field: m}
-	entryVal.Field["lagid"], err = getLagIdFromLagName(lagName)
+	entryVal.Field["admin_status"]= "up"
+	entryVal.Field["mtu"]= "9100"
 	if err != nil {
 		return keys, err
 	}
@@ -30,17 +31,17 @@ func (app *IntfApp) translateUpdateLagIntf(d *db.DB, lagName *string, inpOp reqT
 		app.ifTableMap[*lagName] = dbEntry{op: opCreate, entry: entryVal}
 		return keys, nil
 	}
-	log.Info("LAG---- keys are ", keys)
+	log.Info("----> LAGkeys are ", keys)
 	app.translateUpdateIntfConfig(lagName, lag, &curr)
 	return keys, err
 }
 
 func (app *IntfApp) processUpdateLagIntfConfig(d *db.DB) error {
-	log.Info("******INSIDE LAG INTF FILE**processUPDATE******")
+	log.Info("INSIDE LAG INTF FILE--processUPDATE---")
 	var err error
 
 	for lagName, lagEntry := range app.ifTableMap {
-	log.Info("******INSIDE LAG INTF FILE**processUPDATE****lagName and lagentru are**", lagName, lagEntry)
+	log.Info("--->lagName and lagentry are", lagName, lagEntry) //Portchannel10{1 {map[admin_status:up mtu:9100]}}
 		switch lagEntry.op {
 		case opCreate:
 			err = d.CreateEntry(app.lagD.lagTs, db.Key{Comp: []string{lagName}}, lagEntry.entry)
